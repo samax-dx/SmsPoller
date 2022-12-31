@@ -79,7 +79,7 @@ public class GpSmsPoller {
         payload.put("username", "ELAdmin_3338");
         payload.put("password", "Rgl12345^");
         payload.put("apicode", "4");
-        payload.put("msisdn", task.terminatingCalledNumber);
+        payload.put("msisdn", task.terminatingCalledNumber.replaceAll("^880", ""));
         payload.put("countrycode", "0");
         payload.put("cli", "EXCEELI");
         payload.put("messagetype", "3");
