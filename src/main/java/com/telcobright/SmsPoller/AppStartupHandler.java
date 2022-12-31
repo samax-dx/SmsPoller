@@ -104,7 +104,6 @@ public class AppStartupHandler {
                         pollingTaskRepository.saveAll(pollingTasks);
                     } catch (Exception e) {
                         e.printStackTrace();
-                        throw new RuntimeException(e);
                     }
                 }
             }
@@ -148,13 +147,12 @@ public class AppStartupHandler {
 
     @PostConstruct
     public void runPollingCampaignLoop() {
-
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(()->{
             List<PollingTask> pollingTasks= pollingTaskRepository
                     .findIncompletePollingTasksByFinalStatusList(FinalDeliveryStatus.getFinalDeliveryStatusList(),
                             PageRequest.of(0,1000));
             //List<String> testNumbers= Arrays.asList("01754105098","01711533920");
-            List<String> testNumbers= Arrays.asList("017134567899");
+            List<String> testNumbers= new ArrayList<>();//Arrays.asList("017134567899");
             List<PollingTask> pollingTasksByTestNumbers= pollingTaskRepository.findIncompletePollingTasksByTestNumber(testNumbers);
             pollingTasks.addAll(pollingTasksByTestNumbers);
 
@@ -184,7 +182,7 @@ public class AppStartupHandler {
                     retryHistoryStr= retryHistoryStr.equals("") ?JsonBase64Helper.encodeField(newHistory):
                             retryHistoryStr + "," + JsonBase64Helper.encodeField(newHistory);
                     campaignTask.retryHistory=retryHistoryStr;
-                pollingTaskRepository.save(pollingTask);
+                    pollingTaskRepository.save(pollingTask);
                     campaignTaskRepository.save(campaignTask);
 
                     if(testNumbers.contains(campaignTask.terminatingCalledNumber)||
@@ -194,11 +192,9 @@ public class AppStartupHandler {
                 }
                 catch(Exception e){
                     e.printStackTrace();
-                    throw new RuntimeException(e);
                 }
             });
         },0, 5000, TimeUnit.MILLISECONDS);
-
     }
 
     void scheduleSmsForRetry(CampaignTask campaignTask) {
