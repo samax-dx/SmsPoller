@@ -41,7 +41,7 @@ public class GpSmsPoller {
             return DeliveryStatus.pending;
         }
         else if(message.contains("invalid")){
-            return DeliveryStatus.delivered;
+            return DeliveryStatus.rejected;
         }
         return DeliveryStatus.undetermined;
     }
