@@ -18,6 +18,6 @@ public interface PollingTaskRepository extends CrudRepository<PollingTask, Strin
     @Query("select pt from polling_task pt where pt.status not in ?1")
     List<PollingTask> findIncompletePollingTasksByFinalStatusList(List<String> finalStatusList, Pageable pageable);
 
-    @Query("select pt from polling_task pt where pt.terminatingCalledNumber in ?1")
-    List<PollingTask> findIncompletePollingTasksByTestNumber(List<String> testNumbers);
+//    @Query("select pt from polling_task pt where pt.terminatingCalledNumber in ?1")
+//    List<PollingTask> findIncompletePollingTasksByTestNumber(List<String> testNumbers);
 }

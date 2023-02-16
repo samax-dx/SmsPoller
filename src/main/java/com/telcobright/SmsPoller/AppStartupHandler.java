@@ -31,7 +31,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -43,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 
@@ -70,8 +70,8 @@ public class AppStartupHandler {
     @PostConstruct
     public void instantiateAfterShootProducer() {
         Properties properties = new Properties();
-        properties.put("bootstrap.servers", Optional.ofNullable(AppService.config.kafkaServerAddress).orElse("localhost:9092"));
-        properties.put("client.id", Optional.ofNullable(AppService.config.kafkaClientId).orElse("pollingClient"));
+        properties.put("bootstrap.servers", Optional.ofNullable(AppService.config.kafkaServerAddress).orElse("119.40.81.118:29092"));
+        properties.put("client.id", Optional.ofNullable(AppService.config.kafkaClientId).orElse("TelcoSmsApp"));
 
         AppService.afterShootProducer = new KafkaProducer<>(properties, new StringSerializer(), new StringSerializer());
     }
@@ -81,8 +81,8 @@ public class AppStartupHandler {
     public void setupKafkaConsumer() {
         Executors.newSingleThreadExecutor().submit(() -> {
             Properties properties = new Properties();
-            properties.put("bootstrap.servers", Optional.ofNullable(AppService.config.kafkaServerAddress).orElse("localhost:9092"));
-            properties.put("group.id", Optional.ofNullable(AppService.config.kafkaClientId).orElse("pollingClient"));
+            properties.put("bootstrap.servers", Optional.ofNullable(AppService.config.kafkaServerAddress).orElse("119.40.81.118:29092"));
+            properties.put("group.id", Optional.ofNullable(AppService.config.kafkaClientId).orElse("TelcoSmsApp"));
 
             KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(properties, new StringDeserializer(), new StringDeserializer());
 
@@ -91,6 +91,7 @@ public class AppStartupHandler {
             }
 
             kafkaConsumer.subscribe(Collections.singleton("smspollv2"));
+            kafkaConsumer.subscribe(Collections.singleton("PLAINTEXT"));
 
             while (AppService.operational.get()) {
                 for (ConsumerRecord<String, String> record : kafkaConsumer.poll(Duration.ofMillis(100))) {
@@ -98,10 +99,20 @@ public class AppStartupHandler {
                             record.topic(), record.partition(), record.offset(), record.key(), record.value());
 
                     try {
-                        ConsumerRecord<String, String> consumedDataForPolling =
-                                new ConsumerRecord<>("smspollv2", 0, 0, record.key(), record.value());
-                        List<PollingTask> pollingTasks = getPollingTasksFromKafkaMsg(consumedDataForPolling.value());
-                        pollingTaskRepository.saveAll(pollingTasks);
+                        List<PollingTask> pollingTasks;
+
+                        if (record.topic().equals("PLAINTEXT")) {
+                            ConsumerRecord<String, String> consumedDataForPolling = new ConsumerRecord<>("PLAINTEXT", 0, 0, record.key(), record.value());
+                            onSs7SmsReport(consumedDataForPolling.value());
+                            pollingTasks = null; // getPollingTasksFromMsgPlaintext(consumedDataForPolling.value());
+                        } else {
+                            ConsumerRecord<String, String> consumedDataForPolling = new ConsumerRecord<>("smspollv2", 0, 0, record.key(), record.value());
+                            pollingTasks = getPollingTasksFromMsgSmspollv2(consumedDataForPolling.value());
+                        }
+
+                        if (pollingTasks != null) {
+                            pollingTaskRepository.saveAll(pollingTasks);
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -112,7 +123,66 @@ public class AppStartupHandler {
         });
     }
 
-    List<PollingTask> getPollingTasksFromKafkaMsg(String json) {
+    private void onSs7SmsReport(String report) {
+        JsonNode pollingMessage;
+        try {
+            pollingMessage = new ObjectMapper().readValue(report, JsonNode.class);
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+            return;
+        }
+
+        JsonNode smsIdNode = pollingMessage.get("smsId");
+        if (smsIdNode == null) {
+            return ;
+        }
+
+        CampaignTask campaignTask = campaignTaskRepository.findByTaskIdExternal(smsIdNode.asText());;
+        if (campaignTask == null) {
+            return;
+        }
+        campaignTask.statusExternal=pollingMessage.get("sriInfo").get("sriErrorCode").asText().isEmpty() ? DeliveryStatus.delivered.name() : DeliveryStatus.pending.name();
+        campaignTask.errorCodeExternal=pollingMessage.get("sriInfo").get("sriErrorCode").asText();
+        campaignTaskRepository.save(campaignTask);
+    }
+
+    private List<PollingTask> getPollingTasksFromMsgPlaintext(String json) {
+        JsonNode pollingMessage;
+        try {
+            pollingMessage = new ObjectMapper().readValue(json, JsonNode.class);
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        JsonNode smsIdNode = pollingMessage.get("smsId");
+        if (smsIdNode == null) {
+            return  null;
+        }
+
+        CampaignTask campaignTask = campaignTaskRepository.findByTaskIdExternal(smsIdNode.asText());
+
+        PollingTask task= new PollingTask();
+        task.campaignTaskId=campaignTask.campaignTaskId;
+        task.phoneNumber=campaignTask.phoneNumber;
+        task.terminatingCalledNumber=campaignTask.terminatingCalledNumber;
+        task.originatingCallingNumber=campaignTask.originatingCallingNumber;
+        task.terminatingCallingNumber=campaignTask.terminatingCallingNumber;
+        task.message=campaignTask.message;
+        task.campaignId=campaignTask.campaignId;
+        task.packageId=campaignTask.packageId;
+        task.routeId=campaignTask.routeId;
+        task.status=pollingMessage.get("sriInfo").get("sriErrorCode").asText().isEmpty() ? DeliveryStatus.delivered.name() : DeliveryStatus.pending.name();
+        task.errorCode=pollingMessage.get("sriInfo").get("sriErrorCode").asText();
+        task.taskId=campaignTask.taskIdExternal;
+        task.pollRetryCount=0;
+        task.taskDetailJson=campaignTask.taskDetailJson;
+        task.expires=LocalDateTime.now().plusDays(3);
+
+        return new ArrayList<>(Collections.singletonList(task));
+    }
+
+    List<PollingTask> getPollingTasksFromMsgSmspollv2(String json) {
         JsonNode pollingMessage;
         try {
             pollingMessage = new ObjectMapper().readValue(json, JsonNode.class);
@@ -126,6 +196,7 @@ public class AppStartupHandler {
         
         campaignTasks.forEach(campaignTask->{
             PollingTask task= new PollingTask();
+            task.campaignTaskId=campaignTask.get("campaignTaskId").asText();
             task.phoneNumber=campaignTask.get("phoneNumber").asText();
             task.terminatingCalledNumber=campaignTask.get("terminatingCalledNumber").asText();
             task.originatingCallingNumber=campaignTask.get("originatingCallingNumber").asText();
@@ -148,18 +219,22 @@ public class AppStartupHandler {
     @PostConstruct
     public void runPollingCampaignLoop() {
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(()->{
-            List<PollingTask> pollingTasks= pollingTaskRepository
-                    .findIncompletePollingTasksByFinalStatusList(FinalDeliveryStatus.getFinalDeliveryStatusList(),
-                            PageRequest.of(0,1000));
-            //List<String> testNumbers= Arrays.asList("01754105098","01711533920");
-            List<String> testNumbers= new ArrayList<>();//Arrays.asList("017134567899");
-            List<PollingTask> pollingTasksByTestNumbers= pollingTaskRepository.findIncompletePollingTasksByTestNumber(testNumbers);
-            pollingTasks.addAll(pollingTasksByTestNumbers);
+            List<PollingTask> pollingTasks = pollingTaskRepository.findIncompletePollingTasksByFinalStatusList(
+                    FinalDeliveryStatus.getFinalDeliveryStatusList(), PageRequest.of(0,1000));
+
+//            List<String> testNumbers= new ArrayList<>(); // Arrays.asList("01754105098","01711533920");
+//            List<PollingTask> pollingTasksByTestNumbers = pollingTaskRepository.findIncompletePollingTasksByTestNumber(testNumbers);
+//            pollingTasks.addAll(pollingTasksByTestNumbers);
 
             pollingTasks.forEach(pollingTask->{
                 try{
-                    DeliveryStatus deliveryStatus = new GpSmsPoller().poll(pollingTask);
-                    CampaignTask campaignTask = campaignTaskRepository.findByPhoneNumberAndCampaignId(pollingTask.phoneNumber, pollingTask.campaignId);
+                    Map<String, Supplier<SmsPoller>> pollerProviders = new HashMap<>();
+                    pollerProviders.put("grameenphone", GpSmsPoller::new);
+                    pollerProviders.put("telco_gp", Ss7SmsPoller::new);
+
+                    DeliveryStatus deliveryStatus = pollerProviders.get(pollingTask.routeId).get().poll(pollingTask);
+//                    CampaignTask campaignTask = campaignTaskRepository.findByPhoneNumberAndCampaignId(pollingTask.phoneNumber, pollingTask.campaignId);
+                    CampaignTask campaignTask = campaignTaskRepository.findByCampaignTaskId(pollingTask.campaignTaskId);
 
                     if (campaignTask == null) {
                         return;
@@ -185,8 +260,8 @@ public class AppStartupHandler {
                     pollingTaskRepository.save(pollingTask);
                     campaignTaskRepository.save(campaignTask);
 
-                    if(testNumbers.contains(campaignTask.terminatingCalledNumber)||
-                            (FinalDeliveryStatus.getFailedDeliveryStatusList().contains(deliveryStatus.name()))){//not final status
+                    if(//testNumbers.contains(campaignTask.terminatingCalledNumber)||
+                            FinalDeliveryStatus.getFailedDeliveryStatusList().contains(deliveryStatus.name())) {//not final status
                         scheduleSmsForRetry(campaignTask);
                     }
                 }

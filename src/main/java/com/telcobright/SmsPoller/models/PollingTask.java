@@ -21,6 +21,9 @@ public class PollingTask {
     @Column(name="polling_task_id", length = 20)
     public Long pollingTaskId;
 
+    @Column(name="campaign_task_id")
+    public String campaignTaskId;
+
     @Column(name="phone_number")
     public String phoneNumber;
 

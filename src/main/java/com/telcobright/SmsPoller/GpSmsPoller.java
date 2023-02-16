@@ -27,11 +27,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Component
-public class GpSmsPoller {
+public class GpSmsPoller implements SmsPoller {
     @Autowired
     CampaignTaskRepository campaignTaskRepository;
 
-    DeliveryStatus poll(PollingTask task) {
+    @Override
+    public DeliveryStatus poll(PollingTask task) {
         Map<String, Object> response = pollTask(task);
         String message = ((String) response.get("message")).toLowerCase();
         if (message.contains("delivered")) {

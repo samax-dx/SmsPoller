@@ -3,13 +3,17 @@ package com.telcobright.SmsPoller.models;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import javax.persistence.IdClass;
+//import javax.persistence.IdClass;
 import java.time.LocalDateTime;
 
 @Entity(name = "campaign_task")
-@IdClass(CampaignTaskKey.class)
+//@IdClass(CampaignTaskKey.class)
 public class CampaignTask {
     @Id
+    @Column(name = "campaign_task_id")
+    public String campaignTaskId;
+
+//    @Id
     @Column(name = "phone_number")
     public String phoneNumber;
 
