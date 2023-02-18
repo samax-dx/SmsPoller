@@ -12,7 +12,6 @@ import java.time.LocalDateTime;
 //@IdClass(CampaignTaskKey.class)
 public class CampaignTask {
     @Id
-    @GenericGenerator(name = "OfbizEntityIdGenerator", strategy = "com.telcobright.SmsPoller.StringSequenceIdentifier")
     @Column(name = "campaign_task_id")
     public String campaignTaskId;
 
@@ -32,7 +31,7 @@ public class CampaignTask {
     @Column(name = "message")
     public String message;
 
-    @Id
+//    @Id
     @Column(name = "campaign_id")
     public String campaignId;
 
