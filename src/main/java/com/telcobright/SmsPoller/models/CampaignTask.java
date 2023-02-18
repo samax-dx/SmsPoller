@@ -1,5 +1,7 @@
 package com.telcobright.SmsPoller.models;
 
+import org.hibernate.annotations.GenericGenerator;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -10,6 +12,7 @@ import java.time.LocalDateTime;
 //@IdClass(CampaignTaskKey.class)
 public class CampaignTask {
     @Id
+    @GenericGenerator(name = "OfbizEntityIdGenerator", strategy = "com.telcobright.SmsPoller.StringSequenceIdentifier")
     @Column(name = "campaign_task_id")
     public String campaignTaskId;
 
